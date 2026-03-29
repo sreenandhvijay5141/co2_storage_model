@@ -5,10 +5,11 @@ import matplotlib.pyplot as plt
 
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 # -----------------------------
 # PAGE CONFIG
@@ -141,11 +142,13 @@ sens_df["Parameter"] = sens_df["Parameter"].replace({"Residual_Gas_Saturation": 
 st.dataframe(sens_df)
 
 # -----------------------------
-# PDF GENERATION
+# PDF GENERATION (FINAL)
 # -----------------------------
 st.write("## 📄 Generate Report")
 
 def create_pdf():
+
+    # Chart
     fig, ax = plt.subplots(figsize=(6,3))
     ax.bar(sens_df["Parameter"], sens_df["% Change"])
     plt.xticks(rotation=25)
@@ -155,26 +158,63 @@ def create_pdf():
 
     doc = SimpleDocTemplate("report.pdf")
     styles = getSampleStyleSheet()
+
+    # Bigger fonts
+    title_style = ParagraphStyle(name='TitleStyle', fontSize=20, leading=24, spaceAfter=12)
+    heading_style = ParagraphStyle(name='HeadingStyle', fontSize=14, leading=16, spaceAfter=8)
+    normal_style = ParagraphStyle(name='NormalStyle', fontSize=12, leading=14)
+
     content = []
 
-    content.append(Paragraph("CO₂ Storage Efficiency Report", styles['Title']))
+    # Title (CO₂ FIXED)
+    content.append(Paragraph("CO₂ Storage Efficiency Report", title_style))
+
+    # Prediction
+    content.append(Paragraph(f"Predicted Efficiency: {round(prediction,3)}", normal_style))
+    content.append(Paragraph(f"Interpretation: {interpretation}", normal_style))
     content.append(Spacer(1, 10))
 
-    content.append(Paragraph(f"Predicted Efficiency: {round(prediction,3)}", styles['Normal']))
-    content.append(Paragraph(f"Interpretation: {interpretation}", styles['Normal']))
-
+    # Inputs
+    content.append(Paragraph("Input Parameters:", heading_style))
+    content.append(Paragraph(f"Porosity: {porosity}", normal_style))
+    content.append(Paragraph(f"Pressure: {pressure}", normal_style))
+    content.append(Paragraph(f"Temperature: {temperature}", normal_style))
+    content.append(Paragraph(f"Depth: {depth}", normal_style))
+    content.append(Paragraph(f"Sgr: {sgr}", normal_style))
     content.append(Spacer(1, 10))
 
-    content.append(Paragraph("Input Parameters:", styles['Heading2']))
-    content.append(Paragraph(f"Porosity: {porosity}", styles['Normal']))
-    content.append(Paragraph(f"Pressure: {pressure}", styles['Normal']))
-    content.append(Paragraph(f"Temperature: {temperature}", styles['Normal']))
-    content.append(Paragraph(f"Depth: {depth}", styles['Normal']))
-    content.append(Paragraph(f"Sgr: {sgr}", styles['Normal']))
+    # Chart
+    content.append(Paragraph("Sensitivity Analysis Chart:", heading_style))
+    content.append(Image("chart.png", width=5*inch, height=2.5*inch))
+    content.append(Spacer(1, 12))
 
-    content.append(Spacer(1, 10))
-    content.append(Paragraph("Sensitivity Analysis Chart:", styles['Heading2']))
-    content.append(Image("chart.png", width=400, height=200))
+    # Ranking
+    ranked = sens_df.sort_values(by="% Change", key=abs, ascending=False)
+    table_data = [["Parameter", "% Change"]] + ranked[["Parameter", "% Change"]].values.tolist()
+
+    table = Table(table_data)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN',(0,0),(-1,-1),'CENTER'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
+    ]))
+
+    content.append(Paragraph("Parameter Importance Ranking:", heading_style))
+    content.append(table)
+    content.append(Spacer(1, 12))
+
+    # Explanation
+    content.append(Paragraph("Explanation:", heading_style))
+    content.append(Paragraph(
+        "Sensitivity analysis shows how each reservoir parameter influences CO₂ storage efficiency. "
+        "Higher percentage change indicates stronger impact.",
+        normal_style))
+    content.append(Paragraph(
+        "Depth and residual gas saturation significantly affect trapping mechanisms, "
+        "while temperature may reduce efficiency depending on reservoir conditions.",
+        normal_style))
 
     doc.build(content)
 
