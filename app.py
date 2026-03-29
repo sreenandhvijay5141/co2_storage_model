@@ -5,11 +5,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
-
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
+from sklearn.metrics import mean_squared_error
 
 # -----------------------------
 # PAGE CONFIG
@@ -20,7 +16,7 @@ st.title("🌍 CO₂ Storage Prediction System")
 st.markdown("### Data-Driven Reservoir Evaluation")
 
 # -----------------------------
-# DATASET
+# DATASET SELECTION
 # -----------------------------
 st.write("## 📂 Dataset Selection")
 
@@ -29,22 +25,13 @@ data_option = st.radio(
     ["Synthetic Dataset", "Upload Real Dataset"]
 )
 
-required_columns = [
-    'Porosity', 'Pressure', 'Temperature',
-    'Depth', 'Residual_Gas_Saturation', 'Efficiency'
-]
-
 if data_option == "Upload Real Dataset":
     file = st.file_uploader("Upload CSV", type=["csv"])
     
     if file is not None:
         df = pd.read_csv(file)
-
-        if all(col in df.columns for col in required_columns):
-            st.success("Dataset uploaded successfully")
-        else:
-            st.error("Dataset missing required columns")
-            st.stop()
+        st.success("Dataset uploaded successfully")
+        st.dataframe(df.head())
     else:
         st.stop()
 
@@ -72,18 +59,15 @@ else:
     )
 
 # -----------------------------
-# MODEL
+# FEATURES
 # -----------------------------
 X = df[['Porosity', 'Pressure', 'Temperature', 'Depth', 'Residual_Gas_Saturation']]
 y = df['Efficiency']
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
-model = LinearRegression()
-model.fit(X_train, y_train)
-
 # -----------------------------
-# INPUTS
+# SIDEBAR INPUTS
 # -----------------------------
 st.sidebar.header("🔧 Input Parameters")
 
@@ -92,6 +76,23 @@ pressure = st.sidebar.slider("Pressure", int(X['Pressure'].min()), int(X['Pressu
 temperature = st.sidebar.slider("Temperature", int(X['Temperature'].min()), int(X['Temperature'].max()), int(X['Temperature'].mean()))
 depth = st.sidebar.slider("Depth", int(X['Depth'].min()), int(X['Depth'].max()), int(X['Depth'].mean()))
 sgr = st.sidebar.slider("Residual Gas Saturation", float(X['Residual_Gas_Saturation'].min()), float(X['Residual_Gas_Saturation'].max()), float(X['Residual_Gas_Saturation'].mean()))
+
+# -----------------------------
+# MODEL
+# -----------------------------
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# -----------------------------
+# PERFORMANCE
+# -----------------------------
+r2 = model.score(X_test, y_test)
+rmse = np.sqrt(mean_squared_error(y_test, model.predict(X_test)))
+
+st.write("## 📊 Model Performance")
+col1, col2 = st.columns(2)
+col1.metric("R² Score", round(r2,3))
+col2.metric("RMSE", round(rmse,4))
 
 # -----------------------------
 # PREDICTION
@@ -105,18 +106,17 @@ st.metric("CO₂ Storage Efficiency", round(prediction,3))
 # -----------------------------
 # INTERPRETATION
 # -----------------------------
+st.write("## 📘 Interpretation")
+
 if prediction < 0.3:
-    interpretation = "Low efficiency → Poor reservoir"
-    st.warning(interpretation)
+    st.warning("Low efficiency → Poor reservoir")
 elif prediction < 0.5:
-    interpretation = "Moderate efficiency → Acceptable reservoir"
-    st.info(interpretation)
+    st.info("Moderate efficiency → Acceptable reservoir")
 else:
-    interpretation = "High efficiency → Excellent reservoir"
-    st.success(interpretation)
+    st.success("High efficiency → Excellent reservoir")
 
 # -----------------------------
-# SENSITIVITY
+# SENSITIVITY ANALYSIS
 # -----------------------------
 st.write("## 📊 Sensitivity Analysis")
 
@@ -124,103 +124,97 @@ base_input = np.array([[porosity, pressure, temperature, depth, sgr]])
 base_pred = model.predict(base_input)[0]
 
 results = []
+
 params = ['Porosity','Pressure','Temperature','Depth','Residual_Gas_Saturation']
 
 for i, param in enumerate(params):
+    
     temp = [porosity, pressure, temperature, depth, sgr]
-    temp[i] *= 1.1
+    temp[i] *= 1.1  # 10% increase
     
     temp = np.array([temp])
     new_pred = model.predict(temp)[0]
     
     change = ((new_pred - base_pred)/base_pred)*100
+    
     results.append([param, round(new_pred,3), round(change,2)])
 
 sens_df = pd.DataFrame(results, columns=["Parameter", "New Prediction", "% Change"])
-sens_df["Parameter"] = sens_df["Parameter"].replace({"Residual_Gas_Saturation": "Sgr"})
+
+# Shorten name for clean graph
+sens_df["Parameter"] = sens_df["Parameter"].replace({
+    "Residual_Gas_Saturation": "Sgr"
+})
 
 st.dataframe(sens_df)
 
+# CLEAN BAR GRAPH
+fig, ax = plt.subplots(figsize=(8,4))
+
+ax.bar(sens_df["Parameter"], sens_df["% Change"])
+
+ax.set_ylabel("% Change in Efficiency")
+ax.set_title("Sensitivity Impact")
+
+plt.xticks(rotation=25, ha='right')
+plt.tight_layout()
+
+ax.grid(True, axis='y', linestyle='--', alpha=0.6)
+
+st.pyplot(fig)
+
 # -----------------------------
-# PDF GENERATION (FINAL)
+# PARAMETER RANKING
 # -----------------------------
-st.write("## 📄 Generate Report")
+st.write("## 🏆 Parameter Importance Ranking")
 
-def create_pdf():
+sens_df["Impact Strength"] = sens_df["% Change"].abs()
 
-    # Chart
-    fig, ax = plt.subplots(figsize=(6,3))
-    ax.bar(sens_df["Parameter"], sens_df["% Change"])
-    plt.xticks(rotation=25)
-    plt.tight_layout()
-    plt.savefig("chart.png")
-    plt.close()
+rank_df = sens_df.sort_values(by="Impact Strength", ascending=False)
 
-    doc = SimpleDocTemplate("report.pdf")
-    styles = getSampleStyleSheet()
+st.dataframe(rank_df[["Parameter", "% Change"]])
 
-    # Bigger fonts
-    title_style = ParagraphStyle(name='TitleStyle', fontSize=20, leading=24, spaceAfter=12)
-    heading_style = ParagraphStyle(name='HeadingStyle', fontSize=14, leading=16, spaceAfter=8)
-    normal_style = ParagraphStyle(name='NormalStyle', fontSize=12, leading=14)
+top_param = rank_df.iloc[0]["Parameter"]
+st.success(f"Most Influential Parameter: {top_param}")
 
-    content = []
+# CLEAN RANKING GRAPH
+fig2, ax2 = plt.subplots(figsize=(8,4))
 
-    # Title (CO₂ FIXED)
-    content.append(Paragraph("CO₂ Storage Efficiency Report", title_style))
+ax2.bar(rank_df["Parameter"], rank_df["Impact Strength"])
 
-    # Prediction
-    content.append(Paragraph(f"Predicted Efficiency: {round(prediction,3)}", normal_style))
-    content.append(Paragraph(f"Interpretation: {interpretation}", normal_style))
-    content.append(Spacer(1, 10))
+ax2.set_ylabel("Impact Strength (%)")
+ax2.set_title("Parameter Ranking")
 
-    # Inputs
-    content.append(Paragraph("Input Parameters:", heading_style))
-    content.append(Paragraph(f"Porosity: {porosity}", normal_style))
-    content.append(Paragraph(f"Pressure: {pressure}", normal_style))
-    content.append(Paragraph(f"Temperature: {temperature}", normal_style))
-    content.append(Paragraph(f"Depth: {depth}", normal_style))
-    content.append(Paragraph(f"Sgr: {sgr}", normal_style))
-    content.append(Spacer(1, 10))
+plt.xticks(rotation=25, ha='right')
+plt.tight_layout()
 
-    # Chart
-    content.append(Paragraph("Sensitivity Analysis Chart:", heading_style))
-    content.append(Image("chart.png", width=5*inch, height=2.5*inch))
-    content.append(Spacer(1, 12))
+ax2.grid(True, axis='y', linestyle='--', alpha=0.6)
 
-    # Ranking
-    ranked = sens_df.sort_values(by="% Change", key=abs, ascending=False)
-    table_data = [["Parameter", "% Change"]] + ranked[["Parameter", "% Change"]].values.tolist()
+st.pyplot(fig2)
 
-    table = Table(table_data)
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('ALIGN',(0,0),(-1,-1),'CENTER'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('GRID', (0,0), (-1,-1), 1, colors.black)
-    ]))
+# -----------------------------
+# EXPLANATION
+# -----------------------------
+st.write("## 🧠 Explanation")
 
-    content.append(Paragraph("Parameter Importance Ranking:", heading_style))
-    content.append(table)
-    content.append(Spacer(1, 12))
+st.write("""
+- Sensitivity analysis shows how each parameter affects output  
+- % Change indicates influence strength  
+- Ranking identifies the most critical reservoir parameter  
+""")
 
-    # Explanation
-    content.append(Paragraph("Explanation:", heading_style))
-    content.append(Paragraph(
-        "Sensitivity analysis shows how each reservoir parameter influences CO₂ storage efficiency. "
-        "Higher percentage change indicates stronger impact.",
-        normal_style))
-    content.append(Paragraph(
-        "Depth and residual gas saturation significantly affect trapping mechanisms, "
-        "while temperature may reduce efficiency depending on reservoir conditions.",
-        normal_style))
+# -----------------------------
+# DOWNLOAD
+# -----------------------------
+st.write("## 📥 Download Result")
 
-    doc.build(content)
+output_df = pd.DataFrame({
+    "Porosity": [porosity],
+    "Pressure": [pressure],
+    "Temperature": [temperature],
+    "Depth": [depth],
+    "Residual Gas Saturation": [sgr],
+    "Predicted Efficiency": [prediction]
+})
 
-    with open("report.pdf", "rb") as f:
-        return f.read()
-
-pdf = create_pdf()
-
-st.download_button("📥 Download PDF Report", pdf, "CO2_Report.pdf")
+st.download_button("Download CSV", output_df.to_csv(index=False), "result.csv")
