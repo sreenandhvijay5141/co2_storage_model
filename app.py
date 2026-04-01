@@ -7,7 +7,6 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
-# 🔧 ADDED: PDF generation
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
@@ -22,7 +21,7 @@ st.title("🌍 CO₂ Storage Prediction System")
 st.markdown("### Data-Driven Reservoir Evaluation")
 
 # -----------------------------
-# DATASET SELECTION
+# DATASET
 # -----------------------------
 st.write("## 📂 Dataset Selection")
 
@@ -40,20 +39,17 @@ if data_option == "Upload Real Dataset":
         st.dataframe(df.head())
     else:
         st.stop()
-
 else:
     np.random.seed(42)
     n = 120
 
-    data = {
+    df = pd.DataFrame({
         'Porosity': np.random.uniform(0.1, 0.3, n),
         'Pressure': np.random.uniform(2000, 5000, n),
         'Temperature': np.random.uniform(50, 100, n),
         'Depth': np.random.uniform(1500, 3500, n),
         'Residual_Gas_Saturation': np.random.uniform(0.1, 0.5, n),
-    }
-
-    df = pd.DataFrame(data)
+    })
 
     df['Efficiency'] = (
         0.6 * df['Porosity']**2 +
@@ -65,15 +61,18 @@ else:
     )
 
 # -----------------------------
-# FEATURES
+# MODEL
 # -----------------------------
 X = df[['Porosity', 'Pressure', 'Temperature', 'Depth', 'Residual_Gas_Saturation']]
 y = df['Efficiency']
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
+model = LinearRegression()
+model.fit(X_train, y_train)
+
 # -----------------------------
-# SIDEBAR INPUTS
+# SIDEBAR
 # -----------------------------
 st.sidebar.header("🔧 Input Parameters")
 
@@ -83,15 +82,8 @@ temperature = st.sidebar.slider("Temperature", int(X['Temperature'].min()), int(
 depth = st.sidebar.slider("Depth", int(X['Depth'].min()), int(X['Depth'].max()), int(X['Depth'].mean()))
 sgr = st.sidebar.slider("Residual Gas Saturation", float(X['Residual_Gas_Saturation'].min()), float(X['Residual_Gas_Saturation'].max()), float(X['Residual_Gas_Saturation'].mean()))
 
-# 🔧 Engineering Parameters
 thickness = st.sidebar.slider("Reservoir Thickness (m)", 10, 200, 50)
 area = st.sidebar.slider("Reservoir Area (km²)", 1, 500, 50)
-
-# -----------------------------
-# MODEL
-# -----------------------------
-model = LinearRegression()
-model.fit(X_train, y_train)
 
 # -----------------------------
 # PERFORMANCE
@@ -110,15 +102,31 @@ col2.metric("RMSE", round(rmse,4))
 input_data = np.array([[porosity, pressure, temperature, depth, sgr]])
 prediction = model.predict(input_data)[0]
 
-# CO2 Density
+# -----------------------------
+# FIXED CAPACITY (REAL WORLD)
+# -----------------------------
+area_m2 = area * 1e6
+
+max_pressure = 5000
+pressure_utilization = 1 - (pressure / max_pressure) * 0.6
+pressure_utilization = max(0.1, min(pressure_utilization, 0.9))
+
+depth_factor = min(1.0, 800 / max(depth, 500))
+compartment_factor = max(0.05, 1 - (depth / 10000))
+
 co2_density = 600 + (pressure / 100) - (temperature * 2)
 co2_density = max(300, min(co2_density, 800))
 
-# Capacity Calculation
-area_m2 = area * 1e6
 efficiency_factor = (1 - sgr)
 
-capacity_kg = area_m2 * thickness * porosity * co2_density * efficiency_factor
+capacity_kg = (
+    area_m2 * thickness * porosity * co2_density
+    * efficiency_factor
+    * pressure_utilization
+    * depth_factor
+    * compartment_factor
+)
+
 capacity_tonnes = capacity_kg / 1000
 
 st.write("## 🎯 Prediction")
@@ -126,37 +134,16 @@ st.metric("CO₂ Storage Efficiency", round(prediction,3))
 st.metric("CO₂ Storage Capacity (tonnes)", round(capacity_tonnes, 2))
 
 # -----------------------------
-# INTERPRETATION
-# -----------------------------
-st.write("## 📘 Interpretation")
-
-if prediction < 0.25:
-    st.warning("Low efficiency → Poor reservoir")
-elif prediction < 0.40:
-    st.info("Moderate efficiency → Acceptable reservoir")
-elif prediction < 0.60:
-    st.success("Good efficiency → Suitable reservoir")
-else:
-    st.success("High efficiency → Excellent reservoir")
-
-# -----------------------------
-# SENSITIVITY ANALYSIS (FIXED)
+# SENSITIVITY ANALYSIS
 # -----------------------------
 st.write("## 📊 Sensitivity Analysis")
 
-base_area_m2 = area * 1e6
-base_density = 600 + (pressure / 100) - (temperature * 2)
-base_density = max(300, min(base_density, 800))
-base_eff = (1 - sgr)
-
-base_capacity = base_area_m2 * thickness * porosity * base_density * base_eff
-
+base_capacity = capacity_kg
 results = []
 
 params = ['Porosity','Pressure','Temperature','Depth','Residual_Gas_Saturation','Thickness','Area']
 
 for param in params:
-
     tp, pr, te, de, sg = porosity, pressure, temperature, depth, sgr
     th, ar = thickness, area
 
@@ -168,21 +155,32 @@ for param in params:
     elif param == 'Thickness': th *= 1.1
     elif param == 'Area': ar *= 1.1
 
-    temp_input = np.array([[tp, pr, te, de, sg]])
-    new_pred = model.predict(temp_input)[0]
-
     temp_area_m2 = ar * 1e6
+
+    temp_pressure_utilization = 1 - (pr / max_pressure) * 0.6
+    temp_pressure_utilization = max(0.1, min(temp_pressure_utilization, 0.9))
+
+    temp_depth_factor = min(1.0, 800 / max(de, 500))
+    temp_compartment_factor = max(0.05, 1 - (de / 10000))
+
     temp_density = 600 + (pr / 100) - (te * 2)
     temp_density = max(300, min(temp_density, 800))
+
     temp_eff = (1 - sg)
 
-    new_capacity = temp_area_m2 * th * tp * temp_density * temp_eff
+    new_capacity = (
+        temp_area_m2 * th * tp * temp_density
+        * temp_eff
+        * temp_pressure_utilization
+        * temp_depth_factor
+        * temp_compartment_factor
+    )
 
     change = ((new_capacity - base_capacity) / base_capacity) * 100
 
-    results.append([param, round(new_pred,3), round(change,2)])
+    results.append([param, round(change,2)])
 
-sens_df = pd.DataFrame(results, columns=["Parameter", "New Prediction", "% Change"])
+sens_df = pd.DataFrame(results, columns=["Parameter", "% Change"])
 
 sens_df["Parameter"] = sens_df["Parameter"].replace({
     "Residual_Gas_Saturation": "Sgr"
@@ -190,15 +188,9 @@ sens_df["Parameter"] = sens_df["Parameter"].replace({
 
 st.dataframe(sens_df)
 
-fig, ax = plt.subplots(figsize=(8,4))
+fig, ax = plt.subplots()
 ax.bar(sens_df["Parameter"], sens_df["% Change"])
-ax.set_ylabel("% Change in Capacity")
-ax.set_title("Sensitivity Impact")
-plt.xticks(rotation=25, ha='right')
-plt.tight_layout()
-ax.grid(True, axis='y', linestyle='--', alpha=0.6)
-
-fig.savefig("sensitivity.png")
+plt.xticks(rotation=25)
 st.pyplot(fig)
 
 # -----------------------------
@@ -209,37 +201,7 @@ st.write("## 🏆 Parameter Importance Ranking")
 sens_df["Impact Strength"] = sens_df["% Change"].abs()
 rank_df = sens_df.sort_values(by="Impact Strength", ascending=False)
 
-st.dataframe(rank_df[["Parameter", "% Change"]])
+st.dataframe(rank_df)
 
 top_param = rank_df.iloc[0]["Parameter"]
 st.success(f"Most Influential Parameter: {top_param}")
-
-fig2, ax2 = plt.subplots(figsize=(8,4))
-ax2.bar(rank_df["Parameter"], rank_df["Impact Strength"])
-ax2.set_ylabel("Impact Strength (%)")
-ax2.set_title("Parameter Ranking")
-plt.xticks(rotation=25, ha='right')
-plt.tight_layout()
-ax2.grid(True, axis='y', linestyle='--', alpha=0.6)
-
-fig2.savefig("ranking.png")
-st.pyplot(fig2)
-
-# -----------------------------
-# DOWNLOAD
-# -----------------------------
-st.write("## 📥 Download Result")
-
-output_df = pd.DataFrame({
-    "Porosity": [porosity],
-    "Pressure": [pressure],
-    "Temperature": [temperature],
-    "Depth": [depth],
-    "Residual Gas Saturation": [sgr],
-    "Thickness (m)": [thickness],
-    "Area (km2)": [area],
-    "Predicted Efficiency": [prediction],
-    "CO2 Capacity (tonnes)": [capacity_tonnes]
-})
-
-st.download_button("Download CSV", output_df.to_csv(index=False), "result.csv")
