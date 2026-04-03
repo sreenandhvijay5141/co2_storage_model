@@ -489,6 +489,7 @@ def generate_pdf():
     story.append(Paragraph("Data-Driven Reservoir Evaluation System", ST))
     story.append(HRFlowable(width="100%", thickness=2,
                              color=colors.HexColor("#1a5276"), spaceAfter=12))
+
     # Input parameters (now includes permeability)
     story.append(Paragraph("Input Parameters", SH))
     story.append(blue_table([
