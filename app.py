@@ -713,7 +713,6 @@ if __name__ == '__main__':
     print(f"Form. types  : {s['formation_types']}")
     print(f"Sources      : {s['sources']}")
     print(f"Efficiency   : {s['efficiency_range'][0]:.3f} – {s['efficiency_range'][1]:.3f}")
-  """
 co2_app.py — CO₂ Storage Prediction System (v3)
 ================================================
 Run: streamlit run co2_app.py
