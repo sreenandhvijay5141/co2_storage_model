@@ -712,7 +712,7 @@ if __name__ == '__main__':
     print(f"Basins       : {s['basins']}")
     print(f"Form. types  : {s['formation_types']}")
     print(f"Sources      : {s['sources']}")
-    print(f"Efficiency   : {s['efficiency_range'][0]:.3f} – {s['efficiency_range'][1]:.3f}"
+    print(f"Efficiency   : {s['efficiency_range'][0]:.3f} – {s['efficiency_range'][1]:.3f}")
   """
 co2_app.py — CO₂ Storage Prediction System (v3)
 ================================================
