@@ -277,8 +277,7 @@ else:
 # ─────────────────────────────────────────────
 # MODEL
 # Ridge regression with L2 regularisation — interpretable, scale-sensitive.
-# alpha=1.0 selected via cross-validation grid search over
-# {0.01, 0.1, 1.0, 10.0, 100.0} per §3.5 (Hoerl and Kennard, 1970).
+# alpha=1.0 default; tune upward if CV R² drops.
 # ─────────────────────────────────────────────
 @st.cache_resource   # FIX: cache model — prevents retraining on every slider move
 def build_and_train_pipeline(X_train_values, y_train_values, feature_names):
@@ -335,13 +334,12 @@ c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Test R² Score",    round(r2, 3))
 c2.metric("RMSE",             round(rmse, 4))
 c3.metric("CV R² (5-fold)",   cv_mean)
-c4.metric("CV Fold Std Dev",  f"±{cv_std}")
+c4.metric("CV Std Dev",       f"±{cv_std}")
 c5.metric("Training Samples", len(X_train))
 
 st.caption(
     "ℹ️ Model: Ridge Linear Regression (α=1.0) with Permeability×Porosity interaction term. "
-    "Test R² (~0.928, §5.1) uses a held-out 20% split (~14 samples); "
-    "CV R² (0.748 ± std, §5.1) is the more reliable generalisation estimate on this small dataset. "
+    "Test R² uses a held-out 20% split (~14 samples); CV R² is the more reliable estimate on this small dataset. "
     "Features are StandardScaler-normalised before fitting."
 )
 
@@ -514,8 +512,8 @@ c5.metric("Injectivity Factor",   f"{round(injectivity * 100, 1)} %",
           help="Permeability-based fill factor")
 
 st.info(
-    f"📌 Theoretical capacity C_theoretical (incl. sweep, §3.11): **{round(theoretical, 0):,.0f} tonnes**\n"
-    f"✅ Practical capacity (×f_pressure×f_depth×f_compartment×f_injectivity): **{round(capacity_tonnes, 0):,.0f} tonnes**\n"
+    f"📌 Theoretical max: **{round(theoretical, 0):,.0f} tonnes**\n"
+    f"✅ Constrained estimate: **{round(capacity_tonnes, 0):,.0f} tonnes**\n"
     f"📉 Operational reduction: **{reduction_pct} %**"
 )
 
@@ -780,9 +778,8 @@ def generate_pdf(
     story.append(Spacer(1, 10))
     story.append(Paragraph("Capacity Constraint Factors", SH))
     story.append(Paragraph(
-        "DOE/USGS volumetric methodology per §3.11: sweep efficiency is included in C_theoretical "
-        "(C_theoretical = A×h×φ×ρ_CO₂×E_sweep). "
-        "Four operational constraint factors are then applied: f_pressure, f_depth, f_compartment, f_injectivity.", NO))
+        "DOE/USGS volumetric methodology with 5 operational constraints. "
+        "Permeability injectivity factor added per Das et al. (2023).", NO))
     story.append(blue_table([
         ["Constraint",           "Value",                     "Description"],
         ["Sweep Efficiency",     f"{round(sweep * 100, 1)} %",      "Pore volume swept — permeability adjusted"],
@@ -805,8 +802,6 @@ def generate_pdf(
     chart_cols = [3.3 * inch, 3.3 * inch]
 
     if shap_path and os.path.exists(shap_path):
-        story.append(Paragraph("Sensitivity & Ranking", SH))
-    else:
         story.append(Paragraph("Sensitivity & Ranking", SH))
 
     charts = RLTable([chart_images], colWidths=chart_cols)
